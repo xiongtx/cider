@@ -1421,12 +1421,20 @@ Return the position of the prompt beginning."
                                    (insert-before-markers string)))))
     (nrepl-show-maximum-output)))
 
+(defun nrepl-init-eval-in-emacs ()
+  (interactive)
+  (nrepl-send-request (list "op" "init-eval" "session" (nrepl-current-session))
+                      (nrepl-make-response-handler (current-buffer) nil nil nil
+                                                   (lambda (buffer) (message "Eval in emacs initialized.")))))
+
 (defun nrepl-default-handler (response)
   "Default handler which is invoked when no handler is found."
-  (nrepl-dbind-response response (out value)
+  (nrepl-dbind-response response (out value eval)
     (cond
      (out
-      (nrepl-emit-interactive-output out)))))
+      (nrepl-emit-interactive-output out))
+     (eval
+      (eval (read eval))))))
 
 (defun nrepl-dispatch (response)
   "Dispatch the response to associated callback."
