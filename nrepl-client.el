@@ -71,6 +71,19 @@ The `nrepl-buffer-name-separator' separates `nrepl' from the project name."
   :type 'hook
   :group 'nrepl)
 
+(defcustom nrepl-accept-types
+  (let* ((base-types '("text/plain" "application/clojure" "application/edn"))
+         (image-type-string (lambda (i) (format "image/%s" (symbol-name i))))
+         (image-types (->> '(jpeg gif png svg)
+                        (-filter 'image-type-available-p)
+                        (-map image-type-string))))
+    (if (require 'shr nil t)
+        (cons "text/html" (append image-types base-types))
+      (append image-types base-types)))
+  "List of acceptable content types."
+  :type 'list
+  :group 'nrepl)
+
 (defcustom nrepl-host "127.0.0.1"
   "The default hostname (or IP address) to connect to."
   :type 'string

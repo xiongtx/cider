@@ -67,6 +67,7 @@ NS specifies the namespace in which to evaluate the request."
     (nrepl-send-request (append
                          (list "op" op
                                "session" (nrepl-current-session)
+                               "accept" nrepl-accept-types
                                "ns" nrepl-buffer-ns)
                          attributes)
                         handler)))
