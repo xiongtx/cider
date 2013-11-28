@@ -298,10 +298,9 @@ DONE-HANDLER, and EVAL-ERROR-HANDLER as appropriate."
 (defun nrepl-default-handler (response)
   "Default handler which is invoked when no handler is found.
 Handles message contained in RESPONSE."
-  (nrepl-dbind-response response (out value)
-    (cond
-     (out
-      (cider-emit-interactive-output out)))))
+  (nrepl-dbind-response response (out value content-type)
+    (cond (out (cider-emit-interactive-output out))
+          (value (cider-display-value-handler value content-type)))))
 
 (defun nrepl-dispatch (response)
   "Dispatch the RESPONSE to associated callback."

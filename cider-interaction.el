@@ -314,7 +314,68 @@ With a PREFIX argument, print the result in the current buffer."
    (save-excursion (backward-sexp) (point))
    (point)))
 
-;;;
+;;; content-type-aware handlers
+
+(defun cider-display-buffer (value mode)
+  (with-current-buffer (cider-popup-buffer "contents" t)
+    (let ((inhibit-read-only t))
+      (insert value)
+      (funcall mode))))
+
+(defun cider-display-html (html)
+  (with-current-buffer (get-buffer-create "*cider-html-raw*")
+    (erase-buffer)
+    (insert html))
+  (with-current-buffer (cider-popup-buffer "html" t)
+    (let ((inhibit-read-only t))
+      (shr-insert-document
+       (with-current-buffer "*cider-html-raw*"
+         (libxml-parse-html-region (point-min) (point-max)))))
+    (make-local-variable 'browse-url-browser-function)
+    (if (symbolp browse-url-browser-function)
+        (setq browse-url-browser-function
+              `(("^/" . cider-browse) ; host-relative URLs
+                ("." . ,browse-url-browser-function)))
+      (add-to-list browse-url-browser-function '("^/" . cider-browse)))
+    ;; TODO: bind back key
+    (goto-char (point-min))))
+
+(defun cider-browse (url &rest _)
+  (if (string-match "^/\\(.+\\)/\\?\\(.+\\)" url)
+      (let ((op (match-string 1 url))
+            (query-string (match-string 2 url)))
+        (cider-send-op op (car (url-parse-query-string query-string))))
+    ;; TODO: need to specify relative URLs more thoroughly
+    (error "Malformed URL: %s" url)))
+
+(defun cider-display-image (image)
+  (with-current-buffer (cider-popup-buffer "image" t)
+    (let ((inhibit-read-only t)
+          ;; TODO: feel like base64 shouldn't be necessary here, but
+          ;; Cider chokes on bencoded bytes
+          (image (create-image (base64-decode-string image) nil t)))
+      (insert-image image))))
+
+(defun cider-display-value-handler (value content-type)
+  (pcase content-type
+    ;; TODO: should there be a mime-type for these things?
+    ;; * one-line messages
+    ;; * reloads
+    ;; * position in existing file or buffer
+    ;; * overlays
+    ("text/plain" (cider-display-buffer value 'fundamental-mode))
+    ("text/html" (cider-display-html value))
+    ("text/url" (browse-url value))
+    ((pred (apply-partially 'string-match "^image/.+$"))
+     (cider-display-image value))
+    ((or "application/clojure" "application/edn")
+     (cider-display-buffer value 'clojure-mode))
+    ((or "application/json" "text/javascript")
+     (cider-display-buffer value 'js-mode))))
+
+
+;;; Path normalization
+
 (defun cider-tramp-prefix ()
   "Top element on `find-tag-marker-ring` used to determine Clojure host."
   (let ((jump-origin (buffer-file-name
