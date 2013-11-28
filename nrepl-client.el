@@ -622,13 +622,14 @@ Refreshes EWOC."
   (with-current-buffer (nrepl-current-connection-buffer)
     (number-to-string (incf nrepl-request-counter))))
 
-(defun nrepl-send-request (request callback)
+(defun nrepl-send-request (request &optional callback)
   "Send REQUEST and register response handler CALLBACK."
   (let* ((request-id (nrepl-next-request-id))
          (request (append (list "id" request-id) request))
          (message (nrepl-bencode request)))
     (nrepl-log-event request)
-    (puthash request-id callback nrepl-requests)
+    (when callback
+      (puthash request-id callback nrepl-requests))
     (nrepl-write-message (nrepl-current-connection-buffer) message)))
 
 (defun nrepl-create-client-session (callback)
