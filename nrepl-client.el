@@ -76,11 +76,12 @@ The `nrepl-buffer-name-separator' separates `nrepl' from the project name."
          (image-type-string (lambda (i) (format "image/%s" (symbol-name i))))
          (image-types (->> '(jpeg gif png svg)
                         (-filter 'image-type-available-p)
-                        (-map image-type-string))))
-    (if (require 'shr nil t)
-        (cons "text/html" (append image-types base-types))
-      (append image-types base-types)))
-  "List of acceptable content types."
+                        (-map image-type-string)))
+         (types (if (require 'shr nil t)
+                    (cons "text/html" (append image-types base-types))
+                  (append image-types base-types))))
+    (mapconcat 'identity types ","))
+  "Comma-separated list of acceptable content types."
   :type 'list
   :group 'nrepl)
 
