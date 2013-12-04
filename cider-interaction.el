@@ -356,22 +356,78 @@ With a PREFIX argument, print the result in the current buffer."
           (image (create-image (base64-decode-string image) nil t)))
       (insert-image image))))
 
-(defun cider-display-value-handler (value content-type)
+(defun cider-display-value-buffer (value content-type)
   (pcase content-type
-    ;; TODO: should there be a mime-type for these things?
-    ;; * one-line messages
-    ;; * reloads
-    ;; * position in existing file or buffer
-    ;; * overlays
-    ("text/plain" (cider-display-buffer value 'fundamental-mode))
+    ("text/plain" (cider-display-buffer value 'text-mode))
     ("text/html" (cider-display-html value))
-    ("text/url" (browse-url value))
-    ((pred (apply-partially 'string-match "^image/.+$"))
-     (cider-display-image value))
+    ((pred (string-match "xml$"))
+     (cider-display-buffer value 'xml-mode))
+    ((pred (string-match "^text/.+$"))
+     (cider-display-buffer value 'fundamental-mode))
     ((or "application/clojure" "application/edn")
      (cider-display-buffer value 'clojure-mode))
-    ((or "application/json" "text/javascript")
-     (cider-display-buffer value 'js-mode))))
+    ((or "application/json" "application/javascript"
+         "application/ecmascript" "text/javascript")
+     (cider-display-buffer value 'js-mode))
+    ((pred (string-match "^image/.+$"))
+     (cider-display-image value))))
+
+(defun cider-display-value-inline (value content-type)
+  (cond ((string-match "^text/.+$" content-type)
+         (cider-emit-interactive-output value))
+        ((string-match "^image/.+$" content-type)
+         (with-current-buffer (cider-current-repl-buffer)
+           (let ((pos (1- (cider-repl--input-line-beginning-position))))
+             (save-excursion
+               (goto-char pos)
+               (insert-image (image (create-image
+                                     (base64-decode-string value) nil t)))))))
+        (t (error "Unsupported inline content-type %s" content-type))))
+
+(defun cider-overlay-face (color)
+  (let ((face-name (intern (concat "nrepl-discover-" color "-face"))))
+    (when (not (symbol-file face-name 'defface))
+      (custom-declare-face face-name `((default . (:background ,color)))
+                           (concat "Face for nrepl " color " overlays")))
+    face-name))
+
+;; TODO: needs some testing
+(defun cider-display-overlay (file line &optional color message)
+  (save-excursion
+    (if (and (stringp line) (string= line "clear"))
+        (let ((b (find-buffer-visiting value)))
+          (when b
+            (with-current-buffer b
+              (remove-overlays))))
+      (find-file file)
+      (goto-char (point-min))
+      (forward-line (1- line))
+      (let ((beg (point)))
+        (end-of-line)
+        (let ((overlay (make-overlay beg (point))))
+          (overlay-put overlay 'face (cider-overlay-face color))
+          (when message
+            (overlay-put overlay 'message message)))))))
+
+(defun cider-display-value-handler (value content-disposition content-type)
+  (pcase (list content-disposition content-type)
+    (`("inline" ,_) (cider-display-value-inline value content-type))
+    (`("alert" ,_) (if (or (null content-type) (= "text/plain" content-type))
+                        (message value)
+                      (error "Unknown alert content type %s" content-type)))
+    (`(,_ "editor/reload") (let ((b (find-buffer-visiting value)))
+                              (if b
+                                  (with-current-buffer b
+                                    (revert-buffer))
+                                (find-file value))))
+    (`(,_ "editor/position") (destructuring-bind (file position) value
+                                ;; TODO: push on to find-tag-marker-ring
+                                (find-file file)
+                                (goto-char position)))
+    (`(,_ "editor/overlay") (apply 'cider-display-overlay value))
+    (`(,_ "application/url") (browse-url value))
+    ;; TODO: get optional buffer name out of content-disposition
+    (_ (cider-display-value-buffer value content-type))))
 
 
 ;;; Path normalization

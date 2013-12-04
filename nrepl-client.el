@@ -72,7 +72,9 @@ The `nrepl-buffer-name-separator' separates `nrepl' from the project name."
   :group 'nrepl)
 
 (defcustom nrepl-accept-types
-  (let* ((base-types '("text/plain" "application/clojure" "application/edn"))
+  (let* ((base-types '("text/plain" "text/xml" "application/url"
+                       "application/clojure" "application/edn"
+                       "application/json" "application/javascript"))
          (image-type-string (lambda (i) (format "image/%s" (symbol-name i))))
          (image-types (->> '(jpeg gif png svg)
                         (-filter 'image-type-available-p)
@@ -298,9 +300,10 @@ DONE-HANDLER, and EVAL-ERROR-HANDLER as appropriate."
 (defun nrepl-default-handler (response)
   "Default handler which is invoked when no handler is found.
 Handles message contained in RESPONSE."
-  (nrepl-dbind-response response (out value content-type)
+  (nrepl-dbind-response response (out value content-type content-disposition)
     (cond (out (cider-emit-interactive-output out))
-          (value (cider-display-value-handler value content-type)))))
+          (value (cider-display-value-handler
+                  value content-disposition content-type)))))
 
 (defun nrepl-dispatch (response)
   "Dispatch the RESPONSE to associated callback."
