@@ -261,7 +261,7 @@ enable `paredit` in the REPL buffer as well:
 * [ac-nrepl](https://github.com/clojure-emacs/ac-nrepl) provides
   completion source for the popular Emacs interactive auto-completion
   framework [auto-complete](http://cx4a.org/software/auto-complete/).
-  Where nrepl provides it, pop-up documentation for completed symbols
+  Where nREPL provides it, pop-up documentation for completed symbols
   will be displayed.
 
 ## Basic Usage
@@ -333,7 +333,7 @@ and it expects `clojure.pprint` to have been required already
 
 ## Keyboard shortcuts
 
-* <kbd>M-x cider-jack-in</kbd>: Launch an nREPL server and a repl client.
+* <kbd>M-x cider-jack-in</kbd>: Launch an nREPL server and a REPL client.
     Prompts for a project root if given a prefix argument.
 * <kbd>M-x cider</kbd>: Connect to an already-running nREPL server.
 
@@ -343,10 +343,12 @@ M-c</kbd>.
 
 ### cider-mode
 
-
 Keyboard shortcut                    | Description
 -------------------------------------|-------------------------------
 <kbd>C-x C-e</kbd>                   | Evaluate the form preceding point and display the result in the echo area.  If invoked with a prefix argument, insert the result into the current buffer.
+<kbd>C-x C-w</kbd>                   | Evaluate the form preceding point and replace it with its result.
+<kbd>C-c M-e</kbd>                   | Evaluate the form preceding point and output it result to the REPL buffer.  If invoked with a prefix argument, takes you to the REPL buffer after being invoked.
+<kbd>C-c M-p</kbd>                   | Load the form preceding point in the REPL buffer.
 <kbd>C-c C-p</kbd>                   | Evaluate the form preceding point and display the result in a popup buffer.
 <kbd>C-M-x</kbd> <kbd>C-c C-c</kbd>  | Evaluate the top level form under point and display the result in the echo area.  If invoked with a prefix argument, insert the result into the current buffer.
 <kbd>C-c C-r</kbd>                   | Evaluate the region and display the result in the echo area.
@@ -354,7 +356,7 @@ Keyboard shortcut                    | Description
 <kbd>C-c C-m</kbd>                   | Invoke `macroexpand-1` on the form at point and display the result in a macroexpansion buffer.  If invoked with a prefix argument, `macroexpand` is used instead of `macroexpand-1`.
 <kbd>C-c M-m</kbd>                   | Invoke `clojure.walk/macroexpand-all` on the form at point and display the result in a macroexpansion buffer.
 <kbd>C-c C-n</kbd>                   | Eval the ns form.
-<kbd>C-c M-n</kbd>                   | Switch the namespace of the repl buffer to the namespace of the current buffer.
+<kbd>C-c M-n</kbd>                   | Switch the namespace of the REPL buffer to the namespace of the current buffer.
 <kbd>C-c C-z</kbd>                   | Select the REPL buffer. With a prefix argument - changes the namespace of the REPL buffer to the one of the currently visited source file.
 <kbd>C-u C-u C-c C-z</kbd>           | Select the REPL buffer based on a user prompt for a directory.
 <kbd>C-c M-d</kbd>                   | Display current REPL connection details, including project directory name, buffer namespace, host and port.
@@ -392,6 +394,12 @@ Keyboard shortcut                    | Description
 <kbd>C-c M-d</kbd> | Display current REPL connection details, including project directory name, buffer namespace, host and port.
 <kbd>C-c M-r</kbd> | Rotate and display the current REPL connection.
 
+In the REPL you can also use "shortcut commands" by pressing `,` at the beginning of a REPL line. You'll be presented with a list of commands you can quickly run (like quitting, displaying some info, clearing the REPL, etc). The character used to trigger the shortcuts is configurable via `cider-repl-shortcut-dispatch-char`. Here's how you can change it to `:`:
+
+```el
+(setq cider-repl-shortcut-dispatch-char ?\:)
+```
+
 ### cider-macroexpansion-minor-mode
 
 Keyboard shortcut               | Description
@@ -408,7 +416,7 @@ times.  To close a single nREPL session, use <kbd>M-x nrepl-close</kbd>.  <kbd>M
 cider-quit</kbd> closes all sessions.
 
 CIDER commands in a Clojure buffer use the default connection.  To make a
-connection default, switch to it's repl buffer and use
+connection default, switch to it's REPL buffer and use
 <kbd>M-x nrepl-make-repl-connection-default</kbd>.
 
 To switch to the relevant REPL buffer based on the Clojure namespace in the current buffer, use: <kbd>C-c C-z</kbd>.
@@ -425,12 +433,14 @@ You can display the current nREPL connection using <kbd>C-c M-d</kbd> and rotate
 
 An extensive changelog is available [here](CHANGELOG.md).
 
-## Extensions
+## Extensions & Related projects
 
 There are a couple of CIDER extensions that add some extra functionality to it:
 
 * [cider-tracing](https://github.com/clojure-emacs/cider-tracing) adds basic tracing support
 * [cider-decompile](https://github.com/clojure-emacs/cider-decompile) adds some Java bytecode decompilation commands
+* [troncle](https://github.com/coventry/troncle) adds advanced tracing support. If you don't mind installing some extra nREPL middleware
+you should use it instead of `cider-tracing`.
 
 ## Team
 

@@ -44,7 +44,6 @@
   :prefix "nrepl-"
   :group 'applications)
 
-
 (defcustom nrepl-buffer-name-separator " "
   "Used in constructing the REPL buffer name.
 The `nrepl-buffer-name-separator' separates `nrepl' from the project name."
@@ -106,7 +105,7 @@ The `nrepl-buffer-name-separator' separates `nrepl' from the project name."
 (defvar nrepl-endpoint nil)
 (defvar nrepl-project-dir nil)
 
-(defconst nrepl-repl-buffer-name-template "*cider%s*")
+(defconst nrepl-repl-buffer-name-template "*cider-repl%s*")
 (defconst nrepl-connection-buffer-name-template "*nrepl-connection%s*")
 (defconst nrepl-server-buffer-name-template "*nrepl-server%s*")
 
@@ -155,7 +154,9 @@ To be used for tooling calls (i.e. completion, eldoc, etc)")
 (defvar nrepl-request-counter 0
   "Continuation serial number counter.")
 
-(defvar nrepl-requests (make-hash-table :test 'equal))
+(defvar nrepl-pending-requests (make-hash-table :test 'equal))
+
+(defvar nrepl-completed-requests (make-hash-table :test 'equal))
 
 (defvar nrepl-buffer-ns "user"
   "Current Clojure namespace of this buffer.")
@@ -183,7 +184,9 @@ To be used for tooling calls (i.e. completion, eldoc, etc)")
  'nrepl-session
  'nrepl-tooling-session
  'nrepl-request-counter
- 'nrepl-requests
+ 'nrepl-pending-requests
+ 'nrepl-completed-requests
+ 'nrepl-done-requests
  'nrepl-buffer-ns
  'nrepl-sync-response)
 
@@ -292,24 +295,31 @@ DONE-HANDLER, and EVAL-ERROR-HANDLER as appropriate."
                (if (member "need-input" status)
                    (cider-need-input buffer))
                (if (member "done" status)
-                   (progn (remhash id nrepl-requests)
-                          (if done-handler
-                              (funcall done-handler buffer))))))))))
+                   (progn
+                     (puthash id (gethash id nrepl-pending-requests) nrepl-completed-requests)
+                     (remhash id nrepl-pending-requests)
+                     (if done-handler
+                         (funcall done-handler buffer))))))))))
 
 ;;; communication
 (defun nrepl-default-handler (response)
   "Default handler which is invoked when no handler is found.
 Handles message contained in RESPONSE."
   (nrepl-dbind-response response (out value content-type content-disposition)
-    (cond (out (cider-emit-interactive-output out))
+    (cond (out (cider-repl-emit-interactive-output out))
           (value (cider-display-value-handler
                   value content-disposition content-type)))))
 
 (defun nrepl-dispatch (response)
-  "Dispatch the RESPONSE to associated callback."
+  "Dispatch the RESPONSE to associated callback.
+
+First we check the list of pending requests for the callback to invoke
+and afterwards we check the completed requests as well, since responses
+could be received even for requests with status \"done\"."
   (nrepl-log-event response)
   (nrepl-dbind-response response (id)
-    (let ((callback (gethash id nrepl-requests)))
+    (let ((callback (or (gethash id nrepl-pending-requests)
+                        (gethash id nrepl-completed-requests))))
       (if callback
           (funcall callback response)
         (nrepl-default-handler response)))))
@@ -346,7 +356,7 @@ Assume that any error during decoding indicates an incomplete message."
   "Handle sentinel events from PROCESS.
 Display MESSAGE and if the process is closed kill the
 process buffer and run the hook `nrepl-disconnected-hook'."
-  (message "nrepl connection closed: %s" message)
+  (message "nREPL connection closed: %s" message)
   (if (equal (process-status process) 'closed)
       (progn
         (with-current-buffer (process-buffer process)
@@ -359,7 +369,7 @@ process buffer and run the hook `nrepl-disconnected-hook'."
   "Send the PROCESS the MESSAGE."
   (process-send-string process message))
 
-;;; Log nrepl events
+;;; Log nREPL events
 
 (defcustom nrepl-log-events nil
   "Log protocol events to the *nrepl-events* buffer."
@@ -460,7 +470,7 @@ Moves CONNECITON-BUFFER to the front of `nrepl-connection-list'."
   (interactive (list nrepl-connection-buffer))
   (if connection-buffer
       ;; maintain the connection list in most recently used order
-      (lexical-let ((buf-name (buffer-name (get-buffer connection-buffer))))
+      (let ((buf-name (buffer-name (get-buffer connection-buffer))))
         (setq nrepl-connection-list
               (cons buf-name (delq buf-name nrepl-connection-list)))
         (nrepl--connections-refresh))
@@ -470,7 +480,7 @@ Moves CONNECITON-BUFFER to the front of `nrepl-connection-list'."
   "Closes CONNECTION-BUFFER, removing it from `nrepl-connection-list'.
 Also closes associated REPL and server buffers."
   (let ((nrepl-connection-dispatch connection-buffer))
-     (lexical-let ((buffer (get-buffer connection-buffer)))
+     (let ((buffer (get-buffer connection-buffer)))
        (setq nrepl-connection-list
              (delq (buffer-name buffer) nrepl-connection-list))
        (when (buffer-live-p buffer)
@@ -502,7 +512,7 @@ Also closes associated REPL and server buffers."
 (defun nrepl-connection-browser ()
   "Open a browser buffer for nREPL connections."
   (interactive)
-  (lexical-let ((buffer (get-buffer nrepl--connection-browser-buffer-name)))
+  (let ((buffer (get-buffer nrepl--connection-browser-buffer-name)))
     (if buffer
         (progn
           (nrepl--connections-refresh-buffer buffer)
@@ -514,7 +524,7 @@ Also closes associated REPL and server buffers."
   "Refresh the connections buffer, if the buffer exists.
 The connections buffer is determined by
 `nrepl--connection-browser-buffer-name'"
-  (lexical-let ((buffer (get-buffer nrepl--connection-browser-buffer-name)))
+  (let ((buffer (get-buffer nrepl--connection-browser-buffer-name)))
     (when buffer
       (nrepl--connections-refresh-buffer buffer))))
 
@@ -527,7 +537,7 @@ The connections buffer is determined by
 (defun nrepl--setup-connection-browser ()
   "Create a browser buffer for nREPL connections."
   (with-current-buffer (get-buffer-create nrepl--connection-browser-buffer-name)
-    (lexical-let ((ewoc (ewoc-create
+    (let ((ewoc (ewoc-create
                          'nrepl--connection-pp
                          "  Host              Port   Project\n")))
       (setq-local nrepl--connection-ewoc ewoc)
@@ -538,7 +548,7 @@ The connections buffer is determined by
 
 (defun nrepl--connection-pp (connection)
   "Print an nREPL CONNECTION to the current buffer."
-  (lexical-let* ((buffer-read-only nil)
+  (let* ((buffer-read-only nil)
                  (buffer (get-buffer connection))
                  (endpoint (buffer-local-value 'nrepl-endpoint buffer)))
     (insert
@@ -561,14 +571,14 @@ The project name is the final component of PATH if not nil."
   (ewoc-filter ewoc (lambda (n) (member n connections)))
   (let ((existing))
     (ewoc-map (lambda (n) (setq existing (cons n existing))) ewoc)
-    (lexical-let ((added (-difference connections existing)))
+    (let ((added (-difference connections existing)))
       (mapc (apply-partially 'ewoc-enter-last ewoc) added)
       (save-excursion (ewoc-refresh ewoc)))))
 
 (defun nrepl--ewoc-apply-at-point (f)
   "Apply function F to the ewoc node at point.
 F is a function of two arguments, the ewoc and the data at point."
-  (lexical-let* ((ewoc nrepl--connection-ewoc)
+  (let* ((ewoc nrepl--connection-ewoc)
                  (node (and ewoc (ewoc-locate ewoc))))
     (when node
       (funcall f ewoc (ewoc-data node)))))
@@ -631,7 +641,7 @@ Refreshes EWOC."
          (message (nrepl-bencode request)))
     (nrepl-log-event request)
     (when callback
-      (puthash request-id callback nrepl-requests))
+      (puthash request-id callback nrepl-pending-requests))
     (nrepl-write-message (nrepl-current-connection-buffer) message)))
 
 (defun nrepl-create-client-session (callback)
@@ -669,7 +679,6 @@ Use SESSION if it is non-nil, otherwise use the current session."
 (defun nrepl-send-string (input callback &optional ns session)
   "Send the request INPUT and register the CALLBACK as the response handler.
 See command `nrepl-eval-request' for details on how NS and SESSION are processed."
-  ;; namespace forms are always evaluated in the "user" namespace
   (nrepl-send-request (nrepl-eval-request input ns session) callback))
 
 (defun nrepl-sync-request-handler (buffer)
@@ -752,7 +761,7 @@ are processed."
 
 (defun nrepl-current-dir ()
   "Return the directory of the current buffer."
-  (lexical-let ((file-name (buffer-file-name (current-buffer))))
+  (let ((file-name (buffer-file-name (current-buffer))))
     (or (when file-name
           (file-name-directory file-name))
         list-buffers-directory)))
@@ -769,7 +778,7 @@ or `nrepl-project-dir' matches PROJECT-DIRECTORY.
 If so ask the user for confirmation."
   (if (cl-find-if
        (lambda (buffer)
-         (lexical-let ((buffer (get-buffer buffer)))
+         (let ((buffer (get-buffer buffer)))
            (or (and endpoint
                     (equal endpoint
                            (buffer-local-value 'nrepl-endpoint buffer)))
@@ -785,7 +794,7 @@ If so ask the user for confirmation."
   "Close the nrepl connection for CONNECTION-BUFFER."
   (interactive (list (nrepl-current-connection-buffer)))
   (nrepl--close-connection-buffer connection-buffer)
-  (cider-possibly-disable-on-existing-clojure-buffers)
+  (run-hooks 'nrepl-disconnected-hook)
   (nrepl--connections-refresh))
 
 ;;; client
@@ -832,7 +841,7 @@ If so ask the user for confirmation."
         (cond (new-session
                (with-current-buffer (process-buffer process)
                  (setq nrepl-tooling-session new-session)
-                 (remhash id nrepl-requests)
+                 (remhash id nrepl-pending-requests)
                  (nrepl-setup-default-namespaces process))))))))
 
 (defun nrepl-new-session-handler (process no-repl-p)
@@ -842,10 +851,9 @@ When NO-REPL-P is truthy, suppress creation of a REPL buffer."
                 (no-repl-p no-repl-p))
     (lambda (response)
       (nrepl-dbind-response response (id new-session)
-        (remhash id nrepl-requests)
+        (remhash id nrepl-pending-requests)
         (cond (new-session
                (lexical-let ((connection-buffer (process-buffer process)))
-                 (message "Connected.  %s" (cider-random-words-of-inspiration))
                  (setq nrepl-session new-session
                        nrepl-connection-buffer connection-buffer)
                  (unless no-repl-p
@@ -892,11 +900,6 @@ Falls back to `nrepl-port' if not found."
   (or (nrepl--port-from-file ".nrepl-port")
       (nrepl--port-from-file "target/repl-port")
       nrepl-port))
-
-;;;###autoload
-(add-hook 'nrepl-connected-hook 'cider-enable-on-existing-clojure-buffers)
-(add-hook 'nrepl-disconnected-hook
-          'cider-possibly-disable-on-existing-clojure-buffers)
 
 (provide 'nrepl-client)
 ;;; nrepl-client.el ends here

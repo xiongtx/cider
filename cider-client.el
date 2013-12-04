@@ -27,6 +27,63 @@
 
 (require 'nrepl-client)
 
+;;; Words of inspiration
+(defun cider-user-first-name ()
+  "Find the current user's first name."
+  (let ((name (if (string= (user-full-name) "")
+                  (user-login-name)
+                (user-full-name))))
+    (string-match "^[^ ]*" name)
+    (capitalize (match-string 0 name))))
+
+(defvar cider-words-of-inspiration
+  `("The best way to predict the future is to invent it. -Alan Kay"
+    "A point of view is worth 80 IQ points. -Alan Kay"
+    "Lisp isn't a language, it's a building material. -Alan Kay"
+    "Simple things should be simple, complex things should be possible. -Alan Kay"
+    "Measuring programming progress by lines of code is like measuring aircraft building progress by weight. -Bill Gates"
+    "Controlling complexity is the essence of computer programming. -Brian Kernighan"
+    "The unavoidable price of reliability is simplicity. -C.A.R. Hoare"
+    "You're bound to be unhappy if you optimize everything. -Donald Knuth"
+    "Simplicity is prerequisite for reliability. -Edsger W. Dijkstra"
+    "Deleted code is debugged code. -Jeff Sickel"
+    "The key to performance is elegance, not battalions of special cases. -Jon Bentley and Doug McIlroy"
+    "First, solve the problem. Then, write the code. -John Johnson"
+    "Simplicity is the ultimate sophistication. -Leonardo da Vinci"
+    "Programming is not about typing... it's about thinking. -Rich Hickey"
+    "Design is about pulling things apart. -Rich Hickey"
+    "Programmers know the benefits of everything and the tradeoffs of nothing. -Rich Hickey"
+    "Code never lies, comments sometimes do. -Ron Jeffries"
+    "The true delight is in the finding out rather than in the knowing.  -Isaac Asimov"
+    "Take this REPL, fellow hacker, and may it serve you well."
+    "Let the hacking commence!"
+    "Hacks and glory await!"
+    "Hack and be merry!"
+    "Your hacking starts... NOW!"
+    "May the Source be with you!"
+    "May the Source shine upon thy REPL!"
+    "Code long and prosper!"
+    "Happy hacking!"
+    "Backend is up, REPL is operational!"
+    "Your imagination is the only limit to what you can do with this REPL!"
+    "This REPL is yours to command!"
+    "Fame is but a hack away!"
+    ,(format "%s, this could be the start of a beautiful program."
+             (cider-user-first-name)))
+  "Scientifically-proven optimal words of hackerish encouragement.")
+
+(defun cider-random-words-of-inspiration ()
+  "Select a random entry from `cider-words-of-inspiration'."
+  (eval (nth (random (length cider-words-of-inspiration))
+             cider-words-of-inspiration)))
+
+(defun cider-display-connected-message ()
+  "Message displayed on successful connection."
+  (message "Connected.  %s" (cider-random-words-of-inspiration)))
+
+(add-hook 'nrepl-connected-hook 'cider-display-connected-message)
+
+;;; Evaluation helpers
 (defun cider-eval (input callback &optional ns session)
   "Send the request INPUT and register the CALLBACK as the response handler.
 NS & SESSION specify the context in which to evaluate the request."
@@ -34,6 +91,11 @@ NS & SESSION specify the context in which to evaluate the request."
   (let ((ns (if (string-match "^[[:space:]]*\(ns\\([[:space:]]*$\\|[[:space:]]+\\)" input)
                 "user"
               ns)))
+    ;; prevent forms from being evaluated in the wrong or a non-existing namespace
+    (when (and ns
+               (derived-mode-p 'clojure-mode)
+               (not (string= ns nrepl-buffer-ns)))
+      (cider-eval-ns-form))
     (nrepl-send-string input callback ns session)))
 
 (defun cider-tooling-eval (input callback &optional ns)
@@ -87,7 +149,7 @@ loaded."
 (defun cider-interrupt ()
   "Interrupt any pending evaluations."
   (interactive)
-  (let ((pending-request-ids (cider-util--hash-keys nrepl-requests)))
+  (let ((pending-request-ids (cider-util--hash-keys nrepl-pending-requests)))
     (dolist (request-id pending-request-ids)
       (nrepl-send-interrupt request-id (cider-interrupt-handler (current-buffer))))))
 

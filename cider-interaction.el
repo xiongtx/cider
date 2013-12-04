@@ -117,7 +117,7 @@ Info contains project name, current REPL namespace, host:port endpoint and Cloju
   (message (cider--connection-info (nrepl-current-connection-buffer))))
 
 (defun cider-rotate-connection ()
-  "Rotate and display the current nrepl connection."
+  "Rotate and display the current nREPL connection."
   (interactive)
   (setq nrepl-connection-list
         (append (cdr nrepl-connection-list)
@@ -148,7 +148,7 @@ to jump back to the last Clojure source buffer."
              (derived-mode-p 'cider-repl-mode))
     (setq cider-last-clojure-buffer buffer)))
 
-(defun cider-switch-to-repl-buffer (arg)
+(defun cider-switch-to-repl-buffer (&optional arg)
   "Select the REPL buffer, when possible in an existing window.
 
 Hint: You can use `display-buffer-reuse-frames' and
@@ -242,12 +242,12 @@ they can be in either order."
   (interactive)
   (cider-eval-region (point-min) (point-max)))
 
-(defun cider-expression-at-point ()
-  "Return the text of the expr at point."
+(defun cider-defun-at-point ()
+  "Return the text of the top-level sexp at point."
   (apply #'buffer-substring-no-properties
-         (cider-region-for-expression-at-point)))
+         (cider--region-for-defun-at-point)))
 
-(defun cider-region-for-expression-at-point ()
+(defun cider--region-for-defun-at-point ()
   "Return the start and end position of defun at point."
   (save-excursion
     (save-match-data
@@ -256,14 +256,18 @@ they can be in either order."
         (beginning-of-defun)
         (list (point) end)))))
 
-(defun cider-eval-expression-at-point (&optional prefix)
-  "Evaluate the current toplevel form, and print result in the mini-buffer.
+(defun cider-eval-defun-at-point (&optional prefix)
+  "Evaluate the current toplevel form, and print result in the minibuffer.
 With a PREFIX argument, print the result in the current buffer."
   (interactive "P")
-  (let ((form (cider-expression-at-point)))
+  (let ((form (cider-defun-at-point)))
     (if prefix
         (cider-interactive-eval-print form)
       (cider-interactive-eval form))))
+
+(define-obsolete-function-alias
+  'cider-eval-expression-at-point
+  'cider-eval-defun-at-point)
 
 (defun cider-eval-ns-form ()
   "Evaluate the current buffer's namespace form."
@@ -271,7 +275,7 @@ With a PREFIX argument, print the result in the current buffer."
   (when (clojure-find-ns)
     (save-excursion
       (goto-char (match-beginning 0))
-      (cider-eval-expression-at-point))))
+      (cider-eval-defun-at-point))))
 
 (defun cider-bounds-of-sexp-at-point ()
   "Return the bounds sexp at point as a pair (or nil)."
@@ -285,7 +289,7 @@ With a PREFIX argument, print the result in the current buffer."
 
 (defun cider-symbol-at-point ()
   "Return the name of the symbol at point, otherwise nil."
-  (let ((str (substring-no-properties (thing-at-point 'symbol))))
+  (let ((str (substring-no-properties (or (thing-at-point 'symbol) ""))))
     (and str
          (not (equal str (concat (cider-find-ns) "> ")))
          (not (equal str ""))
@@ -308,7 +312,7 @@ With a PREFIX argument, print the result in the current buffer."
                 (cons (set-marker (make-marker) start)
                       (set-marker (make-marker) end)))))))
 
-(defun cider-last-expression ()
+(defun cider-last-sexp ()
   "Return the last sexp."
   (buffer-substring-no-properties
    (save-excursion (backward-sexp) (point))
@@ -433,7 +437,7 @@ With a PREFIX argument, print the result in the current buffer."
 ;;; Path normalization
 
 (defun cider-tramp-prefix ()
-  "Top element on `find-tag-marker-ring` used to determine Clojure host."
+  "Top element on `find-tag-marker-ring' used to determine Clojure host."
   (let ((jump-origin (buffer-file-name
                       (marker-buffer
                        (ring-ref find-tag-marker-ring 0)))))
@@ -473,7 +477,8 @@ Removes any leading slash if on Windows."
 
 (defun cider-find-file (filename)
   "Switch to a buffer visiting FILENAME.
-Adjusts for HOME location using `cider-home-prefix-adjustment'.  Uses `find-file'."
+Adjusts for HOME location using `cider-home-prefix-adjustment'.
+Uses `find-file'."
   (find-file (cider-emacs-or-clojure-side-adjustment filename)))
 
 (defun cider-find-resource (resource)
@@ -578,13 +583,13 @@ Adjusts for HOME location using `cider-home-prefix-adjustment'.  Uses `find-file
 
 (defun cider-completion-complete-op-fn (str)
   "Return a list of completions for STR using the nREPL \"complete\" op."
-  (lexical-let ((strlst (plist-get
-                         (nrepl-send-request-sync
-                          (list "op" "complete"
-                                "session" (nrepl-current-tooling-session)
-                                "ns" nrepl-buffer-ns
-                                "symbol" str))
-                         :value)))
+  (let ((strlst (plist-get
+                 (nrepl-send-request-sync
+                  (list "op" "complete"
+                        "session" (nrepl-current-tooling-session)
+                        "ns" nrepl-buffer-ns
+                        "symbol" str))
+                 :value)))
     (when strlst
       (car strlst))))
 
@@ -641,24 +646,27 @@ otherwise dispatch to internal completion function."
   "Make a stdin response handler for BUFFER."
   (nrepl-make-response-handler buffer
                                (lambda (buffer value)
-                                 (cider-emit-result buffer value t))
+                                 (cider-repl-emit-result buffer value t))
                                (lambda (buffer out)
-                                 (cider-emit-output buffer out t))
+                                 (cider-repl-emit-output buffer out t))
                                (lambda (buffer err)
-                                 (cider-emit-output buffer err t))
+                                 (cider-repl-emit-output buffer err t))
                                nil))
 
-(defun cider-handler (buffer)
-  "Make a nrepl evaluation handler for BUFFER."
+(defun cider-insert-eval-handler (buffer)
+  "Make a nREPL evaluation handler for the BUFFER.
+The handler simply inserts the result value in BUFFER."
   (nrepl-make-response-handler buffer
                                (lambda (buffer value)
-                                 (cider-emit-result buffer value))
+                                 (with-current-buffer buffer
+                                   (insert value)))
                                (lambda (buffer out)
-                                 (cider-emit-output buffer out))
+                                 (cider-repl-emit-interactive-output out))
                                (lambda (buffer err)
-                                 (cider-emit-output buffer err))
-                               (lambda (buffer)
-                                 (cider-emit-prompt buffer))))
+                                 (message "%s" err)
+                                 (cider-highlight-compilation-errors
+                                  buffer err))
+                               '()))
 
 (defun cider-interactive-eval-handler (buffer)
   "Make an interactive eval handler for BUFFER."
@@ -666,7 +674,7 @@ otherwise dispatch to internal completion function."
                                (lambda (buffer value)
                                  (message "%s" value))
                                (lambda (buffer value)
-                                 (cider-emit-interactive-output value))
+                                 (cider-repl-emit-interactive-output value))
                                (lambda (buffer err)
                                  (message "%s" err)
                                  (cider-highlight-compilation-errors
@@ -683,7 +691,7 @@ otherwise dispatch to internal completion function."
                                      (setq nrepl-buffer-ns (clojure-find-ns))
                                      (run-hooks 'cider-file-loaded-hook)))
                                  (lambda (buffer value)
-                                   (cider-emit-interactive-output value))
+                                   (cider-repl-emit-interactive-output value))
                                  (lambda (buffer err)
                                    (message "%s" err)
                                    (cider-highlight-compilation-errors
@@ -788,8 +796,8 @@ They exist for compatibility with `next-error'."
 See `compilation-error-regexp-alist' for help on their format.")
 
 (add-to-list 'compilation-error-regexp-alist-alist
-             (cons 'nrepl cider-compilation-regexp))
-(add-to-list 'compilation-error-regexp-alist 'nrepl)
+             (cons 'cider cider-compilation-regexp))
+(add-to-list 'compilation-error-regexp-alist 'cider)
 
 (defun cider-extract-error-info (regexp message)
   "Extract error information with REGEXP against MESSAGE."
@@ -969,28 +977,72 @@ search for and read a `ns' form."
                 (cider-interactive-eval-handler buffer)
                 (cider-current-ns))))
 
-(defun cider-eval-last-expression (&optional prefix)
+(defun cider-interactive-eval-to-repl (form)
+  "Evaluate the given FORM and print it's value in REPL buffer."
+  (let ((buffer (cider-current-repl-buffer)))
+    (cider-eval form
+                (cider-insert-eval-handler buffer)
+                (cider-current-ns))))
+
+(defun cider-eval-last-sexp (&optional prefix)
   "Evaluate the expression preceding point.
 If invoked with a PREFIX argument, print the result in the current buffer."
   (interactive "P")
   (if prefix
-      (cider-interactive-eval-print (cider-last-expression))
-    (cider-interactive-eval (cider-last-expression))))
+      (cider-interactive-eval-print (cider-last-sexp))
+    (cider-interactive-eval (cider-last-sexp))))
 
-(defun cider-eval-print-last-expression ()
+(define-obsolete-function-alias
+  'cider-eval-last-expression
+  'cider-eval-last-sexp)
+
+(defun cider-eval-last-sexp-and-replace ()
+  "Evaluate the expression preceding point and replace it with its result."
+  (interactive)
+  (let ((last-sexp (cider-last-sexp)))
+    (backward-kill-sexp)
+    (cider-interactive-eval-print last-sexp)))
+
+(defun cider-eval-last-sexp-to-repl (&optional prefix)
+  "Evaluate the expression preceding point and insert its result in the REPL.
+If invoked with a PREFIX argument, switch to the REPL buffer."
+  (interactive "P")
+  (cider-interactive-eval-to-repl (cider-last-sexp))
+  (when prefix
+    (cider-switch-to-repl-buffer)))
+
+(defun cider-eval-print-last-sexp ()
   "Evaluate the expression preceding point.
 Print its value into the current buffer"
   (interactive)
-  (cider-interactive-eval-print (cider-last-expression)))
+  (cider-interactive-eval-print (cider-last-sexp)))
 
-(defun cider-pprint-eval-last-expression ()
+(defun cider-pprint-eval-last-sexp ()
   "Evaluate the expression preceding point and pprint its value in a popup buffer."
   (interactive)
-  (let ((form (cider-last-expression))
+  (let ((form (cider-last-sexp))
         (result-buffer (cider-popup-buffer cider-result-buffer nil)))
     (cider-tooling-eval (format "(clojure.pprint/pprint %s)" form)
                         (cider-popup-eval-out-handler result-buffer)
                         (cider-current-ns))))
+
+(defun cider-insert-last-sexp-in-repl (&optional arg)
+  "Insert the expression preceding point in the REPL buffer.
+If invoked with a prefix ARG eval the expression after inserting it."
+  (interactive "P")
+  (let ((form (cider-last-sexp))
+        (start-pos (point)))
+    (with-current-buffer (cider-current-repl-buffer)
+      (insert form)
+      (indent-region start-pos (point))
+      (when arg
+        (cider-repl-return))))
+  (cider-switch-to-repl-buffer))
+
+(defun cider-ping ()
+  "Check that communication with the server works."
+  (interactive)
+  (message "%s" (cider-eval-and-get-value "\"PONG\"")))
 
 (defun clojure-enable-cider ()
   "Turn on CIDER mode (see command `cider-mode').
@@ -1009,7 +1061,6 @@ Useful in hooks."
       (nrepl-current-connection-buffer)
     (error nil)))
 
-;;;###autoload
 (defun cider-enable-on-existing-clojure-buffers ()
   "Enable interaction mode on existing Clojure buffers.
 See command `cider-mode'."
@@ -1019,9 +1070,8 @@ See command `cider-mode'."
     (with-current-buffer buffer
       (clojure-enable-cider))))
 
-;;;###autoload
 (defun cider-disable-on-existing-clojure-buffers ()
-  "Disable interaction mode on existing Clojure buffers.
+  "Disable `cider-mode' on existing Clojure buffers.
 See command `cider-mode'."
   (interactive)
   (dolist (buffer (cider-util--clojure-buffers))
@@ -1030,7 +1080,7 @@ See command `cider-mode'."
       (clojure-disable-cider))))
 
 (defun cider-possibly-disable-on-existing-clojure-buffers ()
-  "If not connected, disable nrepl interaction mode on existing Clojure buffers."
+  "If not connected, disable `cider-mode' on existing Clojure buffers."
   (unless (cider-connected-p)
     (cider-disable-on-existing-clojure-buffers)))
 
@@ -1151,21 +1201,6 @@ under point, prompts for a var."
                         filename
                         (file-name-nondirectory filename)))
 
-(defun cider-load-file-core (filename)
-  "Load the Clojure file FILENAME."
-  (let ((fn (replace-regexp-in-string
-             "\\\\" "\\\\\\\\"
-             (convert-standard-filename (expand-file-name filename)))))
-    (cider-eval-load-file
-     (format "(clojure.core/load-file \"%s\")\n(in-ns '%s)\n"
-             fn (cider-find-ns)))))
-
-(defun cider-dispatch-load-file (filename)
-  "Dispatch the load file operation for FILENAME."
-  (if (nrepl-op-supported-p "load-file")
-      (cider-load-file-op filename)
-    (cider-load-file-core filename)))
-
 (defun cider-load-file (filename)
   "Load the Clojure file FILENAME."
   (interactive (list
@@ -1174,7 +1209,7 @@ under point, prompts for a var."
                                         (file-name-nondirectory
                                          (buffer-file-name))))))
   (remove-overlays (point-min) (point-max) 'cider-note-p t)
-  (cider-dispatch-load-file filename)
+  (cider-load-file-op filename)
   (message "Loading %s..." filename))
 
 (defun cider-load-current-buffer ()
@@ -1232,6 +1267,10 @@ restart the server."
   (interactive)
   (cider-quit)
   (cider-jack-in current-prefix-arg))
+
+(add-hook 'nrepl-connected-hook 'cider-enable-on-existing-clojure-buffers)
+(add-hook 'nrepl-disconnected-hook
+          'cider-possibly-disable-on-existing-clojure-buffers)
 
 (provide 'cider-interaction)
 ;;; cider-interaction.el ends here
