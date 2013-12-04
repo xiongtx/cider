@@ -373,6 +373,7 @@ With a PREFIX argument, print the result in the current buffer."
     ((or "application/json" "application/javascript"
          "application/ecmascript" "text/javascript")
      (cider-display-buffer value 'js-mode))
+    ;; TODO: support audio/*
     ((pred (string-match "^image/.+$"))
      (cider-display-image value))))
 
@@ -384,8 +385,8 @@ With a PREFIX argument, print the result in the current buffer."
            (let ((pos (1- (cider-repl--input-line-beginning-position))))
              (save-excursion
                (goto-char pos)
-               (insert-image (image (create-image
-                                     (base64-decode-string value) nil t)))))))
+               (insert-image (create-image
+                              (base64-decode-string value) nil t))))))
         (t (error "Unsupported inline content-type %s" content-type))))
 
 (defun cider-overlay-face (color)
@@ -395,7 +396,6 @@ With a PREFIX argument, print the result in the current buffer."
                            (concat "Face for nrepl " color " overlays")))
     face-name))
 
-;; TODO: needs some testing
 (defun cider-display-overlay (file line &optional color message)
   (save-excursion
     (if (and (stringp line) (string= line "clear"))
@@ -424,10 +424,14 @@ With a PREFIX argument, print the result in the current buffer."
                                   (with-current-buffer b
                                     (revert-buffer))
                                 (find-file value))))
+    ;; TODO: support positions inside jars
     (`(,_ "editor/position") (destructuring-bind (file position) value
-                                ;; TODO: push on to find-tag-marker-ring
-                                (find-file file)
-                                (goto-char position)))
+                               (ring-insert find-tag-marker-ring
+                                            (point-marker))
+                               (find-file file)
+                               (goto-char position)
+                               (ring-insert tags-location-ring
+                                            (point-marker))))
     (`(,_ "editor/overlay") (apply 'cider-display-overlay value))
     (`(,_ "application/url") (browse-url value))
     ;; TODO: get optional buffer name out of content-disposition
