@@ -1007,6 +1007,7 @@ arguments and only proceed with evaluation if it returns nil."
          (or callback (cider-interactive-eval-handler nil end)))
        ;; always eval ns forms in the user namespace
        ;; otherwise trying to eval ns form for the first time will produce an error
+       nil
        (if (cider-ns-form-p form) "user" (cider-current-ns))
        (when start (line-number-at-pos start))
        (when start (cider-column-number-at-pos start))))))

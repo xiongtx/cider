@@ -448,13 +448,15 @@ Return the id of the sent message."
       (nrepl--mark-id-completed id))
     id))
 
-(defun cider-nrepl-request:eval (input callback &optional ns line column)
+(defun cider-nrepl-request:eval (input callback &optional connection ns line column)
   "Send the request INPUT and register the CALLBACK as the response handler.
 If NS is non-nil, include it in the request. LINE and COLUMN, if non-nil, define
-the position of INPUT in its buffer."
+the position of INPUT in its buffer.
+
+If CONNECTION is provided use that instead of `cider-current-connection'."
   (nrepl-request:eval input
                       callback
-                      (cider-current-connection)
+                      (or connection (cider-current-connection))
                       (cider-current-session)
                       ns
                       line

@@ -638,6 +638,7 @@ If NEWLINE is true then add a newline at the end of the input."
        (cider-eval-spinner-handler
         (current-buffer)
         (cider-repl-handler (current-buffer)))
+       nil
        (cider-current-ns)
        (line-number-at-pos input-start)
        (cider-column-number-at-pos input-start)))))
@@ -785,13 +786,16 @@ namespace to switch to."
                        (cider-current-ns))))
   (when (or (not ns) (equal ns ""))
     (user-error "No namespace selected"))
-  (cider-nrepl-request:eval (format "(in-ns '%s)" ns)
-                            (cider-repl-switch-ns-handler
-                             (cider-current-connection)))
+  (let ((current-connection (cider-current-connection)))
+    (cider-nrepl-request:eval (format "(in-ns '%s)" ns)
+                              (cider-repl-switch-ns-handler
+                               current-connection)
+                              current-connection))
   (when (cider--cljc-or-cljx-buffer-p)
     (when-let ((other-connection (cider-other-connection)))
       (cider-nrepl-request:eval (format "(in-ns '%s)" ns)
-                                (cider-repl-switch-ns-handler other-connection)))))
+                                (cider-repl-switch-ns-handler other-connection)
+                                other-connection))))
 
 
 ;;;;; History
