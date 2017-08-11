@@ -987,6 +987,18 @@ returned."
     (cider-nrepl-send-sync-request)
     (nrepl-dict-get "spec-list")))
 
+(defun cider-sync-request:spec-ns-list ()
+  "Return sorted list of all spec namespaces."
+  (thread-first `("op" "spec-ns-list")
+    (cider-nrepl-send-sync-request)
+    (nrepl-dict-get "spec-ns-list")))
+
+(defun cider-sync-request:specs-for-ns (spec-ns)
+  (thread-first `("op" "specs-for-ns"
+                  "spec-ns" spec-ns)
+    (cider-nrepl-send-sync-request)
+    (nrepl-dict-get "specs-for-ns")))
+
 (defun cider-sync-request:spec-form (spec)
   "Get SPEC's form from registry."
   (thread-first `("op" "spec-form"

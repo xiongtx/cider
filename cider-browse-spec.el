@@ -135,6 +135,22 @@ Display TITLE at the top and SPECS are indented underneath."
         (insert (propertize "\n" 'spec-name spec-name)))
       (goto-char (point-min)))))
 
+(defun cider-browse-spec--draw-ns-list-buffer (buffer title nss)
+  "Insert list of spec namespaces NSS in BUFFER with TITLE."
+  (with-current-buffer buffer
+    (cider-browse-spec-mode)
+    (let ((inhibit-read-only t))
+      (erase-buffer)
+      (goto-char (point-max))
+      (insert (cider-propertize title 'emph) "\n")
+      (dolist (ns nss)
+        (insert (propertize "  " 'spec-ns spec-ns))
+        ;; (thread-first (cider-font-lock-as-clojure spec-name)
+        ;;   (insert-text-button 'type 'cider-browse-spec--spec)
+        ;;   (button-put 'spec-name spec-name))
+        (insert (propertize "\n" 'spec-ns spec-ns)))
+      (goto-char (point-min)))))
+
 (defun cider--qualified-keyword-p (str)
   "Return non nil if STR is a namespaced keyword."
   (string-match-p "^:.+/.+$" str))
@@ -337,6 +353,21 @@ No filter applied if the regexp is the empty string."
                                                  "All specs in registry"
                                                (format "All specs matching regex `%s' in registry" filter-regex))
                                              specs)))))
+
+(defun cider-browse-spec-ns (&optional arg)
+  "Open list of spec namespaces."
+  (interactive)
+  (cider-ensure-connected)
+  (cider-ensure-op-supported "spec-list")
+  (with-current-buffer (cider-popup-buffer cider-browse-spec-buffer t)
+    (let ((nss (cider-sync-request:spec-ns-list)))
+      (cider-browse-spec--draw-ns-buffer (current-buffer)
+                                         "Spec namespaces"
+                                         nss))))
+
+
+
+
 
 (provide 'cider-browse-spec)
 
